@@ -1,0 +1,1618 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Odelo Player</title>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@1.4.12"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@2.5.0/fonts/remixicon.css" rel="stylesheet">
+    <style>
+
+            :root {
+            --primary-color: #0072ff;
+            --primary-color-hover: #0065e0;
+            --primary-color-transparent: rgba(0, 114, 255, 0.8);
+            --text-color: #ffffff;
+            --background-dark: #141414;
+            --background-darker: #0a0a0a;
+            --overlay-color: rgba(0, 0, 0, 0.7);
+            --progress-background: rgba(255, 255, 255, 0.3);
+            --control-opacity: 0.9;
+            --control-size: 40px;
+            --control-icon-size: 22px;
+            --border-radius: 4px;
+            --transition-speed: 0.3s;
+        }
+        
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: 'Roboto', sans-serif;
+            background-color: var(--background-darker);
+            color: var(--text-color);
+        }
+        
+        .player-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            background-color: var(--background-darker);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+            touch-action: none;
+        }
+        
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+        
+        /* Netflix-style controls container with gradient */
+        .controls-container {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            padding: 60px 20px 10px; /* Reduced bottom padding */
+            background: linear-gradient(transparent, rgba(0,0,0,0.4) 40%, rgba(0,0,0,0.8));
+            transition: opacity var(--transition-speed) ease, transform var(--transition-speed) ease;
+            opacity: 0;
+            transform: translateY(10px);
+            z-index: 10;
+            pointer-events: none;
+        }
+        
+        .controls-container.active {
+            opacity: 1;
+            transform: translateY(0);
+            pointer-events: auto;
+            z-index: 15; /* Higher than tap areas and big play button */
+        }
+        
+        .controls {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            gap: 8px; /* Reduced gap for mobile */
+        }
+        
+        /* Netflix-style sleek progress bar */
+        .progress-container {
+            width: 100%;
+            height: 4px;
+            background-color: var(--progress-background);
+            border-radius: var(--border-radius);
+            cursor: pointer;
+            position: relative;
+            transition: height 0.2s ease;
+            margin-bottom: 5px; /* Reduced margin for mobile */
+        }
+        
+        .progress-container:hover,
+        .touch-device .progress-container.active {
+            height: 6px;
+        }
+        
+        .progress-bar {
+            height: 100%;
+            background-color: var(--primary-color);
+            border-radius: var(--border-radius);
+            position: relative;
+            width: 0%;
+            transition: width 0.1s linear;
+        }
+        
+        .progress-buffer {
+            position: absolute;
+            height: 100%;
+            background-color: rgba(255, 255, 255, 0.2);
+            border-radius: var(--border-radius);
+            width: 0%;
+            transition: width 0.2s linear;
+        }
+        
+        .progress-thumb {
+            position: absolute;
+            right: -8px;
+            top: 50%;
+            transform: translateY(-50%) scale(0);
+            width: 16px;
+            height: 16px;
+            background-color: var(--primary-color);
+            border-radius: 50%;
+            box-shadow: 0 0 5px rgba(0,0,0,0.5);
+            transition: transform 0.2s ease;
+        }
+        
+        .progress-container:hover .progress-thumb,
+        .touch-device .progress-container.active .progress-thumb {
+            transform: translateY(-50%) scale(1);
+        }
+        
+        /* Netflix-style control buttons */
+        .buttons-container {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 5px;
+        }
+        
+        .left-controls, .right-controls {
+            display: flex;
+            align-items: center;
+            gap: 18px;
+        }
+        
+        .control-button {
+            background: none;
+            border: none;
+            color: var(--text-color);
+            font-size: var(--control-icon-size);
+            cursor: pointer;
+            width: var(--control-size);
+            height: var(--control-size);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            transition: background-color 0.2s ease, transform 0.2s ease;
+            opacity: var(--control-opacity);
+            position: relative;
+        }
+        
+        .control-button:hover,
+        .touch-device .control-button:active {
+            background-color: rgba(255, 255, 255, 0.1);
+            transform: scale(1.1);
+        }
+        
+        .control-button i {
+            font-size: var(--control-icon-size);
+        }
+        
+        /* Add invisible touch padding around small controls */
+        .control-button::after {
+            content: '';
+            position: absolute;
+            top: -10px;
+            left: -10px;
+            right: -10px;
+            bottom: -10px;
+            z-index: -1;
+        }
+        
+        .time-display {
+            color: var(--text-color);
+            font-size: 14px;
+            font-weight: 400;
+            margin: 0 10px;
+            min-width: 100px;
+            opacity: 0.9;
+        }
+        
+        /* Netflix-style volume control */
+        .volume-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            position: relative;
+        }
+        
+        .volume-slider {
+            width: 0;
+            height: 4px;
+            background-color: var(--progress-background);
+            border-radius: var(--border-radius);
+            cursor: pointer;
+            overflow: hidden;
+            transition: width 0.3s ease;
+            position: relative;
+        }
+        
+        .volume-container:hover .volume-slider,
+        .touch-device .volume-container.active .volume-slider {
+            width: 80px;
+        }
+        
+        .volume-level {
+            height: 100%;
+            background-color: var(--primary-color);
+            border-radius: var(--border-radius);
+            width: 100%;
+        }
+        
+        /* Netflix-style loading indicator */
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: var(--text-color);
+            background: var(--overlay-color);
+            padding: 15px 25px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            z-index: 5;
+        }
+        
+        .loading-spinner {
+            width: 24px;
+            height: 24px;
+            border: 2px solid rgba(255,255,255,0.2);
+            border-top-color: var(--primary-color);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        .error-message {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: var(--text-color);
+            background: var(--primary-color-transparent);
+            padding: 15px 25px;
+            border-radius: 8px;
+            text-align: center;
+            display: none;
+            z-index: 5;
+        }
+        
+        /* Netflix-style big play button - SMALLER SIZE */
+        .big-play-button {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 60px; /* Reduced from 80px */
+            height: 60px; /* Reduced from 80px */
+            background-color: var(--primary-color-transparent);
+            border-radius: 50%;
+            display: none; /* Hidden by default, only show on initial load or end */
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            z-index: 5;
+            transition: transform 0.2s ease, background-color 0.2s ease;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .big-play-button.visible {
+            display: flex; /* Only show when explicitly made visible */
+        }
+        
+        .big-play-button:hover,
+        .touch-device .big-play-button:active {
+            transform: translate(-50%, -50%) scale(1.1);
+            background-color: var(--primary-color);
+        }
+        
+        .big-play-button i {
+            color: var(--text-color);
+            font-size: 30px; /* Reduced from 40px */
+            margin-left: 4px; /* Adjusted for smaller size */
+        }
+        
+        /* Touch-specific styles */
+        .touch-feedback {
+            position: absolute;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background-color: rgba(0, 114, 255, 0.3);
+            transform: translate(-50%, -50%) scale(0);
+            z-index: 4;
+            pointer-events: none;
+            animation: ripple 0.6s ease-out;
+        }
+        
+        /* Double-tap area indicators (invisible but functional) */
+        .tap-area {
+            position: absolute;
+            width: 33.33%;
+            height: 100%;
+            top: 0;
+            z-index: 3;
+        }
+        
+        .tap-area.left {
+            left: 0;
+        }
+        
+        .tap-area.center {
+            left: 33.33%;
+        }
+        
+        .tap-area.right {
+            right: 0;
+        }
+        
+        /* Netflix-style seek preview */
+        .seek-preview {
+            position: absolute;
+            top: -40px;
+            transform: translateX(-50%);
+            background-color: var(--primary-color);
+            color: var(--text-color);
+            padding: 6px 12px;
+            border-radius: var(--border-radius);
+            font-size: 14px;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+        }
+        
+        .seek-preview.active {
+            opacity: 1;
+        }
+        
+        /* Netflix-style preview thumbnail (placeholder) */
+        .preview-thumbnail {
+            position: absolute;
+            bottom: 50px;
+            transform: translateX(-50%);
+            width: 160px;
+            height: 90px;
+            background-color: var(--background-dark);
+            border: 2px solid var(--primary-color);
+            border-radius: var(--border-radius);
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6);
+            display: none; /* Hidden until thumbnails are implemented */
+        }
+        
+        .preview-thumbnail.active {
+            opacity: 1;
+        }
+        
+        /* Notification toast */
+        .notification-toast {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background-color: var(--primary-color-transparent);
+            color: var(--text-color);
+            padding: 10px 15px;
+            border-radius: var(--border-radius);
+            opacity: 0;
+            transform: translateX(20px);
+            transition: opacity 0.3s ease, transform 0.3s ease;
+            z-index: 20;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+        
+        .notification-toast.active {
+            opacity: 1;
+            transform: translateX(0);
+        }
+        
+        /* Quality selector styles */
+        .quality-menu {
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+        }
+
+        .quality-option {
+            transition: background-color 0.2s ease;
+        }
+
+        .quality-option:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+
+        .quality-option.active {
+            font-weight: bold;
+        }
+        
+        /* Netflix-style animations */
+        @keyframes ripple {
+            to {
+                transform: translate(-50%, -50%) scale(2);
+                opacity: 0;
+            }
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 0.6; }
+            50% { opacity: 1; }
+            100% { opacity: 0.6; }
+        }
+        
+        /* Netflix-style responsive adjustments */
+        @media (max-width: 768px) {
+            .time-display {
+                min-width: auto;
+            }
+            
+            /* Increase spacing between controls */
+            .left-controls, .right-controls {
+                gap: 20px; /* Adjusted from 24px */
+            }
+            
+            /* Make buttons slightly bigger and more spaced out */
+            .control-button {
+                --control-size: 44px; /* Increased from 36px */
+                --control-icon-size: 22px;
+            }
+            
+            /* Larger touch targets on mobile */
+            .touch-device .control-button {
+                --control-size: 44px;
+            }
+            
+            .controls-container {
+                padding: 50px 20px 10px; /* Reduced padding */
+            }
+            
+            /* Make big play button more prominent and separated */
+            .big-play-button {
+                width: 70px;
+                height: 70px;
+                background-color: rgba(0, 114, 255, 0.9); /* More opaque */
+                z-index: 10; /* Ensure it's above other elements */
+            }
+            
+            .big-play-button i {
+                font-size: 36px;
+            }
+            
+            /* Improve progress bar touch target */
+            .progress-container {
+                height: 6px; /* Always slightly bigger on mobile */
+                margin-bottom: 8px; /* Reduced margin after progress bar */
+            }
+            
+            .progress-container:hover,
+            .touch-device .progress-container.active {
+                height: 10px; /* Even bigger when active */
+            }
+            
+            /* Make progress thumb bigger for easier touch */
+            .progress-thumb {
+                width: 20px;
+                height: 20px;
+                right: -10px;
+            }
+            
+            /* Reduce controls spacing */
+            .controls {
+                gap: 5px;
+            }
+        }
+        
+        /* Even smaller screens need more adjustments */
+        @media (max-width: 480px) {
+            /* Reorganize controls for very small screens */
+            .buttons-container {
+                flex-wrap: nowrap; /* Keep on one line */
+            }
+            
+            /* Further separate left and right controls */
+            .left-controls {
+                max-width: 65%; /* Limit width to prevent overcrowding */
+            }
+            
+            .right-controls {
+                max-width: 35%;
+                justify-content: flex-end;
+                gap: 16px; /* Slightly smaller gap */
+            }
+            
+            /* Adjust time display to be more compact */
+            .time-display {
+                font-size: 12px;
+                min-width: 80px;
+                margin: 0 5px;
+            }
+            
+            /* Make volume container more compact */
+            .volume-container:hover .volume-slider,
+            .touch-device .volume-container.active .volume-slider {
+                width: 60px; /* Smaller volume slider */
+            }
+            
+            .controls-container {
+                padding: 40px 10px 5px; /* Further reduced padding */
+            }
+            
+            /* Reduce vertical spacing */
+            .progress-container {
+                margin-bottom: 5px;
+            }
+        }
+        
+        /* Fullscreen orientation fixes */
+        @media screen and (orientation: landscape) {
+            .player-container.fullscreen-active {
+                width: 100vw;
+                height: 100vh;
+            }
+        }
+
+    </style>
+</head>
+<body>
+    <div class="player-container" id="player-container">
+        <video id="video"></video>
+        
+        <div id="big-play-button" class="big-play-button">
+            <i class="ri-play-fill"></i>
+        </div>
+        
+        <!-- Touch areas for double-tap seeking -->
+        <div class="tap-area left" id="tap-area-left"></div>
+        <div class="tap-area center" id="tap-area-center"></div>
+        <div class="tap-area right" id="tap-area-right"></div>
+        
+        <div class="controls-container" id="controls-container">
+            <div class="controls">
+                <div class="progress-container" id="progress-container">
+                    <div class="progress-buffer" id="progress-buffer"></div>
+                    <div class="progress-bar" id="progress-bar">
+                        <div class="progress-thumb"></div>
+                    </div>
+                    <div class="seek-preview" id="seek-preview"></div>
+                    <div class="preview-thumbnail" id="preview-thumbnail"></div>
+                </div>
+                
+                <div class="buttons-container">
+                    <div class="left-controls">
+                        <button class="control-button" id="play-pause-button">
+                            <i class="ri-play-fill" id="play-icon"></i>
+                        </button>
+                        
+                        <div class="volume-container" id="volume-container">
+                            <button class="control-button" id="mute-button">
+                                <i class="ri-volume-up-fill" id="volume-icon"></i>
+                            </button>
+                            <div class="volume-slider" id="volume-slider">
+                                <div class="volume-level" id="volume-level"></div>
+                            </div>
+                        </div>
+                        
+                        <div class="time-display">
+                            <span id="current-time">0:00</span> / <span id="duration">0:00</span>
+                        </div>
+                    </div>
+                    
+                    <div class="right-controls">
+                        <button class="control-button" id="speed-button" title="Playback Speed">
+                            <i class="ri-speed-fill"></i>
+                        </button>
+                        <button class="control-button" id="quality-button" title="Video Quality">
+                            <i class="ri-hd-fill"></i>
+                        </button>
+                        <button class="control-button" id="fullscreen-button">
+                            <i class="ri-fullscreen-fill"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Quality menu -->
+        <div id="quality-menu" class="quality-menu" style="display: none; position: absolute; bottom: 60px; right: 10px; background-color: rgba(28, 28, 28, 0.9); border-radius: 4px; padding: 10px; z-index: 30; min-width: 120px;"></div>
+        
+        <div id="loading" class="loading">
+            <div class="loading-spinner"></div>
+            <span>Loading video...</span>
+        </div>
+        
+        <div id="error" class="error-message">Error loading video</div>
+        
+        <!-- Notification toast -->
+        <div id="notification-toast" class="notification-toast"></div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const videoElement = document.getElementById('video');
+            const playerContainer = document.getElementById('player-container');
+            const loadingElement = document.getElementById('loading');
+            const errorElement = document.getElementById('error');
+            const bigPlayButton = document.getElementById('big-play-button');
+            const controlsContainer = document.getElementById('controls-container');
+            const playPauseButton = document.getElementById('play-pause-button');
+            const playIcon = document.getElementById('play-icon');
+            const muteButton = document.getElementById('mute-button');
+            const volumeIcon = document.getElementById('volume-icon');
+            const fullscreenButton = document.getElementById('fullscreen-button');
+            const progressContainer = document.getElementById('progress-container');
+            const progressBar = document.getElementById('progress-bar');
+            const progressBuffer = document.getElementById('progress-buffer');
+            const currentTimeElement = document.getElementById('current-time');
+            const durationElement = document.getElementById('duration');
+            const volumeSlider = document.getElementById('volume-slider');
+            const volumeLevel = document.getElementById('volume-level');
+            const volumeContainer = document.getElementById('volume-container');
+            const seekPreview = document.getElementById('seek-preview');
+            const previewThumbnail = document.getElementById('preview-thumbnail');
+            const speedButton = document.getElementById('speed-button');
+            const qualityButton = document.getElementById('quality-button');
+            const qualityMenu = document.getElementById('quality-menu');
+            const notificationToast = document.getElementById('notification-toast');
+            
+            // Touch areas for double-tap seeking
+            const tapAreaLeft = document.getElementById('tap-area-left');
+            const tapAreaCenter = document.getElementById('tap-area-center');
+            const tapAreaRight = document.getElementById('tap-area-right');
+            
+            let controlsTimeout;
+            let isPlaying = false;
+            let isMuted = false;
+            let isFullscreen = false;
+            let isTouchDevice = false;
+            let lastTapTime = 0;
+            let touchStartX = 0;
+            let touchStartY = 0;
+            let isSeeking = false;
+            let volumeVisible = false;
+            let userActive = false;
+            let lastMoveTime = Date.now();
+            let hlsInstance = null;
+            let currentPlaybackSpeed = 1.0;
+            let speedOptions = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
+            let speedIndex = 2; // Default 1.0x
+            let retryCount = 0;
+            const MAX_RETRIES = 3;
+            
+            // Cloudflare Worker URL for secure playback
+            const WORKER_URL = "https://odeluhost.skibiditoilet-9330jk.workers.dev";
+            
+            // Parse URL parameters
+            const urlParams = new URLSearchParams(window.location.search);
+            const token = urlParams.get('token');
+            const playlistUrl = urlParams.get('list');
+            const autoplayParam = urlParams.get('autoplay');
+            
+            // Function to show error message
+            function showPlayerError(message) {
+                errorElement.textContent = message;
+                errorElement.style.display = "block";
+                loadingElement.style.display = "none";
+            }
+            
+            // Determine which URL to use
+            let finalPlaylistUrl;
+            
+            if (token) {
+                // Use the token-based URL with Cloudflare Worker
+                finalPlaylistUrl = `${WORKER_URL}/playlist/${token}`;
+                console.log("Using secure token URL:", finalPlaylistUrl);
+            } else if (playlistUrl) {
+                // Fallback to direct URL for backward compatibility
+                finalPlaylistUrl = playlistUrl;
+                console.log("Using direct playlist URL:", finalPlaylistUrl);
+            } else {
+                showPlayerError("No playlist provided. Use ?token=ENCRYPTED_TOKEN or ?list=URL");
+                return;
+            }
+            
+            // Detect touch device
+            function detectTouchDevice() {
+                isTouchDevice = ('ontouchstart' in window) || 
+                                (navigator.maxTouchPoints > 0) || 
+                                (navigator.msMaxTouchPoints > 0);
+                
+                if (isTouchDevice) {
+                    document.body.classList.add('touch-device');
+                    playerContainer.classList.add('touch-device');
+                }
+            }
+            
+            // Function to fix GitHub URLs if needed
+            function fixGitHubUrl(url) {
+                // Add cache busting parameter to avoid caching issues
+                if (url.includes('githubusercontent.com')) {
+                    const cacheBuster = '_cb=' + new Date().getTime();
+                    url = url + (url.includes('?') ? '&' : '?') + cacheBuster;
+                }
+                
+                // If the URL doesn't contain refs/heads/ but contains /main/ or /master/
+                if (!url.includes('/refs/heads/')) {
+                    // Replace /main/ or /master/ with /refs/heads/main/ or /refs/heads/master/
+                    url = url.replace(new RegExp('\/([^\/]+)\/([^\/]+)\/([^\/]+)\/(.+)'), function(match, user, repo, branch, path) {
+                        if (branch === 'main' || branch === 'master') {
+                            return `/${user}/${repo}/refs/heads/${branch}/${path}`;
+                        }
+                        return match;
+                    });
+                }
+                return url;
+            }
+            
+            // Format time in MM:SS
+            function formatTime(seconds) {
+                const minutes = Math.floor(seconds / 60);
+                seconds = Math.floor(seconds % 60);
+                return `${minutes}:${seconds < 10 ? '0' + seconds : seconds}`;
+            }
+            
+            // Update progress bar
+            function updateProgress() {
+                if (videoElement.duration) {
+                    const percentage = (videoElement.currentTime / videoElement.duration) * 100;
+                    progressBar.style.width = `${percentage}%`;
+                    currentTimeElement.textContent = formatTime(videoElement.currentTime);
+                    
+                    // Update buffer progress
+                    if (videoElement.buffered.length > 0) {
+                        const bufferedEnd = videoElement.buffered.end(videoElement.buffered.length - 1);
+                        const bufferPercentage = (bufferedEnd / videoElement.duration) * 100;
+                        progressBuffer.style.width = `${bufferPercentage}%`;
+                    }
+                }
+            }
+            
+            // Seek video
+            function seek(event) {
+                const rect = progressContainer.getBoundingClientRect();
+                const pos = (event.clientX - rect.left) / rect.width;
+                videoElement.currentTime = pos * videoElement.duration;
+            }
+            
+            // Seek video (touch)
+            function touchSeek(event) {
+                event.preventDefault();
+                const touch = event.touches[0] || event.changedTouches[0];
+                const rect = progressContainer.getBoundingClientRect();
+                const pos = (touch.clientX - rect.left) / rect.width;
+                const clampedPos = Math.max(0, Math.min(1, pos));
+                
+                // Update seek preview
+                const previewTime = clampedPos * videoElement.duration;
+                seekPreview.textContent = formatTime(previewTime);
+                seekPreview.style.left = `${clampedPos * 100}%`;
+                seekPreview.classList.add('active');
+                
+                // Update progress bar visually during touch
+                progressBar.style.width = `${clampedPos * 100}%`;
+                
+                // Update preview thumbnail position (if implemented)
+                previewThumbnail.style.left = `${clampedPos * 100}%`;
+                
+                return clampedPos;
+            }
+            
+            // Toggle play/pause
+            function togglePlayPause() {
+                if (videoElement.paused) {
+                    videoElement.play();
+                    playIcon.className = 'ri-pause-fill';
+                    bigPlayButton.classList.remove('visible');
+                    isPlaying = true;
+                    showControls(); // Show controls briefly when starting playback
+                } else {
+                    videoElement.pause();
+                    playIcon.className = 'ri-play-fill';
+                    isPlaying = false;
+                    showControls(); // Keep controls visible when paused
+                }
+            }
+            
+            // Toggle mute
+            function toggleMute() {
+                videoElement.muted = !videoElement.muted;
+                isMuted = videoElement.muted;
+                updateVolumeIcon();
+                
+                // Show volume slider on mobile when toggling mute
+                if (isTouchDevice) {
+                    volumeVisible = !volumeVisible;
+                    if (volumeVisible) {
+                        volumeContainer.classList.add('active');
+                        setTimeout(() => {
+                            volumeContainer.classList.remove('active');
+                            volumeVisible = false;
+                        }, 3000);
+                    } else {
+                        volumeContainer.classList.remove('active');
+                    }
+                }
+                
+                // Show notification
+                showNotification(videoElement.muted ? "Muted" : "Unmuted");
+            }
+            
+            // Update volume icon based on volume level
+            function updateVolumeIcon() {
+                if (videoElement.muted || videoElement.volume === 0) {
+                    volumeIcon.className = 'ri-volume-mute-fill';
+                } else if (videoElement.volume < 0.5) {
+                    volumeIcon.className = 'ri-volume-down-fill';
+                } else {
+                    volumeIcon.className = 'ri-volume-up-fill';
+                }
+                
+                volumeLevel.style.width = `${videoElement.muted ? 0 : videoElement.volume * 100}%`;
+            }
+            
+            // Set volume
+            function setVolume(event) {
+                const rect = volumeSlider.getBoundingClientRect();
+                const pos = (event.clientX - rect.left) / rect.width;
+                videoElement.volume = Math.max(0, Math.min(1, pos));
+                
+                if (videoElement.muted && videoElement.volume > 0) {
+                    videoElement.muted = false;
+                    isMuted = false;
+                }
+                
+                updateVolumeIcon();
+            }
+            
+            // Set volume (touch)
+            function touchVolume(event) {
+                event.preventDefault();
+                const touch = event.touches[0] || event.changedTouches[0];
+                const rect = volumeSlider.getBoundingClientRect();
+                const pos = (touch.clientX - rect.left) / rect.width;
+                videoElement.volume = Math.max(0, Math.min(1, pos));
+                
+                if (videoElement.muted && videoElement.volume > 0) {
+                    videoElement.muted = false;
+                    isMuted = false;
+                }
+                
+                updateVolumeIcon();
+            }
+            
+            // Toggle fullscreen with Netflix-style animations
+            function toggleFullscreen() {
+                if (!document.fullscreenElement && 
+                    !document.webkitFullscreenElement && 
+                    !document.mozFullScreenElement) {
+                    
+                    // Add class for orientation handling
+                    playerContainer.classList.add('fullscreen-active');
+                    
+                    // Try to lock orientation to landscape on mobile
+                    if (isTouchDevice && screen.orientation && screen.orientation.lock) {
+                        screen.orientation.lock('landscape').catch(e => {
+                            console.log('Orientation lock failed:', e);
+                        });
+                    }
+                    
+                    if (playerContainer.requestFullscreen) {
+                        playerContainer.requestFullscreen();
+                    } else if (playerContainer.webkitRequestFullscreen) {
+                        playerContainer.webkitRequestFullscreen();
+                    } else if (playerContainer.msRequestFullscreen) {
+                        playerContainer.msRequestFullscreen();
+                    } else if (playerContainer.mozRequestFullScreen) {
+                        playerContainer.mozRequestFullScreen();
+                    }
+                    isFullscreen = true;
+                    
+                    // Update fullscreen button icon
+                    document.getElementById('fullscreen-button').querySelector('i').className = 'ri-fullscreen-exit-fill';
+                    
+                    // Show notification
+                    showNotification("Fullscreen mode");
+                } else {
+                    // Remove orientation class
+                    playerContainer.classList.remove('fullscreen-active');
+                    
+                    if (document.exitFullscreen) {
+                        document.exitFullscreen();
+                    } else if (document.webkitExitFullscreen) {
+                        document.webkitExitFullscreen();
+                    } else if (document.msExitFullscreen) {
+                        document.msExitFullscreen();
+                    } else if (document.mozCancelFullScreen) {
+                        document.mozCancelFullScreen();
+                    }
+                    isFullscreen = false;
+                    
+                    // Update fullscreen button icon
+                    document.getElementById('fullscreen-button').querySelector('i').className = 'ri-fullscreen-fill';
+                    
+                    // Show notification
+                    showNotification("Exited fullscreen");
+                }
+            }
+            
+            // Change playback speed
+            function changePlaybackSpeed() {
+                // Cycle through speed options
+                speedIndex = (speedIndex + 1) % speedOptions.length;
+                const newSpeed = speedOptions[speedIndex];
+                
+                // Apply new speed
+                videoElement.playbackRate = newSpeed;
+                currentPlaybackSpeed = newSpeed;
+                
+                // Show notification
+                showNotification(`Speed: ${newSpeed}x`);
+            }
+            
+            // Update quality menu with available levels
+            function updateQualityMenu() {
+                // Clear existing options
+                qualityMenu.innerHTML = '';
+                
+                if (hlsInstance && hlsInstance.levels && hlsInstance.levels.length > 1) {
+                    // Add Auto option
+                    const autoOption = document.createElement('div');
+                    autoOption.className = 'quality-option' + (hlsInstance.currentLevel === -1 ? ' active' : '');
+                    autoOption.textContent = 'Auto';
+                    autoOption.style.padding = '5px 10px';
+                    autoOption.style.cursor = 'pointer';
+                    autoOption.style.borderBottom = '1px solid rgba(255,255,255,0.2)';
+                    if (hlsInstance.currentLevel === -1) {
+                        autoOption.style.color = 'var(--primary-color)';
+                    }
+                    
+                    autoOption.addEventListener('click', function() {
+                        hlsInstance.currentLevel = -1;
+                        updateQualityMenu();
+                        showNotification('Auto quality');
+                        qualityMenu.style.display = 'none';
+                    });
+                    
+                    qualityMenu.appendChild(autoOption);
+                    
+                    // Add each quality level
+                    hlsInstance.levels.forEach((level, index) => {
+                        const height = level.height;
+                        const width = level.width;
+                        const bitrate = Math.round(level.bitrate / 1000);
+                        
+                        const option = document.createElement('div');
+                        option.className = 'quality-option' + (hlsInstance.currentLevel === index ? ' active' : '');
+                        option.textContent = `${height}p (${bitrate}k)`;
+                        option.style.padding = '5px 10px';
+                        option.style.cursor = 'pointer';
+                        option.style.marginTop = '5px';
+                        
+                        if (hlsInstance.currentLevel === index) {
+                            option.style.color = 'var(--primary-color)';
+                        }
+                        
+                        option.addEventListener('click', function() {
+                            hlsInstance.currentLevel = index;
+                            updateQualityMenu();
+                            showNotification(`Quality: ${height}p`);
+                            qualityMenu.style.display = 'none';
+                        });
+                        
+                        qualityMenu.appendChild(option);
+                    });
+                } else {
+                    const noOptions = document.createElement('div');
+                    noOptions.textContent = 'No quality options available';
+                    noOptions.style.padding = '5px 10px';
+                    noOptions.style.opacity = '0.7';
+                    qualityMenu.appendChild(noOptions);
+                }
+            }
+            
+            // Show notification toast
+            function showNotification(message) {
+                notificationToast.textContent = message;
+                notificationToast.classList.add('active');
+                
+                // Auto-hide after 2 seconds
+                setTimeout(() => {
+                    notificationToast.classList.remove('active');
+                }, 2000);
+            }
+            
+            // Show controls with Netflix-style animation
+            function showControls() {
+                clearTimeout(controlsTimeout);
+                controlsContainer.classList.add('active');
+                userActive = true;
+                lastMoveTime = Date.now();
+                
+                // Auto-hide controls after inactivity (Netflix style)
+                if (isPlaying) {
+                    controlsTimeout = setTimeout(hideControls, 3000);
+                }
+            }
+            
+            // Hide controls with Netflix-style animation
+            function hideControls() {
+                // Don't hide if user is interacting with controls
+                if (isSeeking || !isPlaying) return;
+                
+                controlsContainer.classList.remove('active');
+                userActive = false;
+                
+                // Also hide quality menu
+                qualityMenu.style.display = 'none';
+            }
+            
+            // Check if user is inactive (Netflix style)
+            function checkUserActivity() {
+                const now = Date.now();
+                if (userActive && isPlaying && now - lastMoveTime > 3000) {
+                    hideControls();
+                }
+            }
+            
+            // Create touch feedback effect (Netflix style)
+            function createTouchFeedback(x, y) {
+                const feedback = document.createElement('div');
+                feedback.className = 'touch-feedback';
+                feedback.style.left = `${x}px`;
+                feedback.style.top = `${y}px`;
+                playerContainer.appendChild(feedback);
+                
+                // Remove after animation completes
+                setTimeout(() => {
+                    playerContainer.removeChild(feedback);
+                }, 600);
+            }
+            
+            // Handle double tap (Netflix style)
+            function handleDoubleTap(event, area) {
+                const now = new Date().getTime();
+                const timeSince = now - lastTapTime;
+                
+                if (timeSince < 300 && timeSince > 0) {
+                    // Double tap detected
+                    const touch = event.touches[0] || event.changedTouches[0];
+                    createTouchFeedback(touch.clientX, touch.clientY);
+                    
+                    if (area === 'left') {
+                        // Rewind 10 seconds
+                        videoElement.currentTime = Math.max(0, videoElement.currentTime - 10);
+                        showNotification("Rewound 10 seconds");
+                    } else if (area === 'right') {
+                        // Forward 10 seconds
+                        videoElement.currentTime = Math.min(videoElement.duration, videoElement.currentTime + 10);
+                        showNotification("Forward 10 seconds");
+                    } else if (area === 'center') {
+                        // Play/pause
+                        togglePlayPause();
+                    }
+                } else {
+                    // Single tap - just show controls if video is playing
+                    if (isPlaying) {
+                        showControls();
+                    } else {
+                        togglePlayPause();
+                    }
+                }
+                
+                lastTapTime = now;
+            }
+            
+            // Initialize video player with Netflix-style features
+            function initPlayer() {
+                // Detect if this is a touch device
+                detectTouchDevice();
+                
+                // Set initial volume
+                videoElement.volume = 0.8;
+                
+                // Don't show controls initially - only show big play button
+                controlsContainer.classList.remove('active');
+                
+                // Show big play button at start
+                bigPlayButton.classList.add('visible');
+                
+                // Start user activity check for Netflix-style control hiding
+                setInterval(checkUserActivity, 1000);
+                
+                // Load the video
+                loadVideo();
+            }
+            
+            // Load video with improved error handling
+            function loadVideo() {
+                // Show loading indicator
+                loadingElement.style.display = "flex";
+                errorElement.style.display = "none";
+                
+                // Check if HLS.js is supported
+                if (Hls.isSupported()) {
+                    // Create HLS instance with improved configuration
+                    hlsInstance = new Hls({
+                        maxBufferLength: 30,
+                        maxMaxBufferLength: 60,
+                        manifestLoadingTimeOut: 20000,
+                        manifestLoadingMaxRetry: 4,
+                        fragLoadingTimeOut: 20000,
+                        fragLoadingMaxRetry: 6,
+                        startLevel: -1,
+                        debug: false,
+                        enableWorker: true,
+                        progressive: true,
+                        lowLatencyMode: false
+                    });
+                    
+                    // Improved error handling
+                    hlsInstance.on(Hls.Events.ERROR, function(event, data) {
+                        console.error('HLS.js error:', data);
+                        
+                        if (data.fatal) {
+                            switch(data.type) {
+                                case Hls.ErrorTypes.MEDIA_ERROR:
+                                    console.log('Media error - attempting recovery');
+                                    hlsInstance.recoverMediaError();
+                                    break;
+                                case Hls.ErrorTypes.NETWORK_ERROR:
+                                    console.log('Network error - attempting to retry');
+                                    hlsInstance.startLoad();
+                                    break;
+                                default:
+                                    // For other fatal errors, try reloading the player
+                                    if (retryCount < MAX_RETRIES) {
+                                        console.log(`Fatal error - retrying (${retryCount + 1}/${MAX_RETRIES})`);
+                                        retryCount++;
+                                        
+                                        // Wait a moment before retrying
+                                        setTimeout(() => {
+                                            hlsInstance.destroy();
+                                            loadVideo();
+                                        }, 1000);
+                                    } else {
+                                        console.log('Max retries reached, showing error');
+                                        errorElement.textContent = "Error loading video: " + data.details;
+                                        errorElement.style.display = "block";
+                                        loadingElement.style.display = "none";
+                                    }
+                                    break;
+                            }
+                        }
+                    });
+                    
+                    hlsInstance.on(Hls.Events.MANIFEST_PARSED, function() {
+                        loadingElement.style.display = "none";
+                        durationElement.textContent = formatTime(videoElement.duration || 0);
+                        
+                        // Update quality menu
+                        updateQualityMenu();
+                        
+                        // Autoplay if requested
+                        if (autoplayParam === '1') {
+                            videoElement.play().then(() => {
+                                isPlaying = true;
+                                playIcon.className = 'ri-pause-fill';
+                                bigPlayButton.classList.remove('visible');
+                            }).catch(e => {
+                                console.log('Autoplay prevented:', e);
+                                // Show big play button if autoplay is blocked
+                                bigPlayButton.classList.add('visible');
+                            });
+                        } else {
+                            // Show big play button if not autoplaying
+                            bigPlayButton.classList.add('visible');
+                        }
+                    });
+                    
+                    hlsInstance.loadSource(finalPlaylistUrl);
+                    hlsInstance.attachMedia(videoElement);
+                } 
+                // For Safari which has native HLS support
+                else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
+                    videoElement.src = finalPlaylistUrl;
+                    videoElement.addEventListener('loadedmetadata', function() {
+                        loadingElement.style.display = "none";
+                        durationElement.textContent = formatTime(videoElement.duration || 0);
+                        
+                        // Autoplay if requested
+                        if (autoplayParam === '1') {
+                            videoElement.play().then(() => {
+                                isPlaying = true;
+                                playIcon.className = 'ri-pause-fill';
+                                bigPlayButton.classList.remove('visible');
+                            }).catch(e => {
+                                console.log('Autoplay prevented:', e);
+                                // Show big play button if autoplay is blocked
+                                bigPlayButton.classList.add('visible');
+                            });
+                        } else {
+                            // Show big play button if not autoplaying
+                            bigPlayButton.classList.add('visible');
+                        }
+                    });
+                } else {
+                    errorElement.textContent = "Your browser doesn't support HLS playback";
+                    errorElement.style.display = "block";
+                    loadingElement.style.display = "none";
+                }
+            }
+            
+            // Event listeners for mouse/keyboard
+            bigPlayButton.addEventListener('click', togglePlayPause);
+            playPauseButton.addEventListener('click', togglePlayPause);
+            muteButton.addEventListener('click', toggleMute);
+            fullscreenButton.addEventListener('click', toggleFullscreen);
+            speedButton.addEventListener('click', changePlaybackSpeed);
+            
+            // Quality button click handler
+            qualityButton.addEventListener('click', function(e) {
+                e.stopPropagation();
+                if (qualityMenu.style.display === 'none') {
+                    qualityMenu.style.display = 'block';
+                    updateQualityMenu();
+                } else {
+                    qualityMenu.style.display = 'none';
+                }
+            });
+            
+            // Hide quality menu when clicking elsewhere
+            document.addEventListener('click', function() {
+                qualityMenu.style.display = 'none';
+            });
+            
+            // Prevent menu from closing when clicking inside it
+            qualityMenu.addEventListener('click', function(e) {
+                e.stopPropagation();
+            });
+            
+            progressContainer.addEventListener('click', function(e) {
+                seek(e);
+                showControls();
+            });
+            
+            // Netflix-style hover preview
+            progressContainer.addEventListener('mousemove', function(e) {
+                if (!isTouchDevice) {
+                    const rect = progressContainer.getBoundingClientRect();
+                    const pos = (e.clientX - rect.left) / rect.width;
+                    const clampedPos = Math.max(0, Math.min(1, pos));
+                    
+                    // Update seek preview
+                    const previewTime = clampedPos * videoElement.duration;
+                    seekPreview.textContent = formatTime(previewTime);
+                    seekPreview.style.left = `${clampedPos * 100}%`;
+                    seekPreview.classList.add('active');
+                }
+            });
+            
+            progressContainer.addEventListener('mouseout', function() {
+                seekPreview.classList.remove('active');
+            });
+            
+            volumeSlider.addEventListener('click', function(e) {
+                setVolume(e);
+                e.stopPropagation(); // Prevent event bubbling
+            });
+            
+            // Prevent control clicks from hiding controls
+            controlsContainer.addEventListener('click', function(e) {
+                e.stopPropagation();
+                showControls();
+            });
+            
+            // Touch event listeners
+            if ('ontouchstart' in window) {
+                // Video container touch events
+                playerContainer.addEventListener('touchstart', function(event) {
+                    // Only show controls if video is playing
+                    if (isPlaying) {
+                        showControls();
+                    }
+                    
+                    // Store initial touch position for potential swipe detection
+                    const touch = event.touches[0];
+                    touchStartX = touch.clientX;
+                    touchStartY = touch.clientY;
+                });
+                
+                // Double-tap areas
+                tapAreaLeft.addEventListener('touchstart', function(event) {
+                    handleDoubleTap(event, 'left');
+                });
+                
+                tapAreaCenter.addEventListener('touchstart', function(event) {
+                    handleDoubleTap(event, 'center');
+                });
+                
+                tapAreaRight.addEventListener('touchstart', function(event) {
+                    handleDoubleTap(event, 'right');
+                });
+                
+                // Progress bar touch events
+                progressContainer.addEventListener('touchstart', function(event) {
+                    progressContainer.classList.add('active');
+                    isSeeking = true;
+                    touchSeek(event);
+                    event.stopPropagation();
+                });
+                
+                progressContainer.addEventListener('touchmove', function(event) {
+                    if (isSeeking) {
+                        touchSeek(event);
+                        event.stopPropagation();
+                    }
+                });
+                
+                progressContainer.addEventListener('touchend', function(event) {
+                    if (isSeeking) {
+                        const pos = touchSeek(event);
+                        videoElement.currentTime = pos * videoElement.duration;
+                        isSeeking = false;
+                        progressContainer.classList.remove('active');
+                        seekPreview.classList.remove('active');
+                        event.stopPropagation();
+                    }
+                });
+                
+                // Volume slider touch events
+                volumeSlider.addEventListener('touchstart', function(event) {
+                    touchVolume(event);
+                    event.stopPropagation();
+                });
+                
+                volumeSlider.addEventListener('touchmove', function(event) {
+                    touchVolume(event);
+                    event.stopPropagation();
+                });
+                
+                // Prevent controls from hiding when interacting with them
+                controlsContainer.addEventListener('touchstart', function(e) {
+                    e.stopPropagation();
+                    showControls();
+                });
+            }
+            
+            // Video event listeners
+            videoElement.addEventListener('timeupdate', updateProgress);
+            
+            videoElement.addEventListener('play', function() {
+                playIcon.className = 'ri-pause-fill';
+                bigPlayButton.classList.remove('visible');
+                isPlaying = true;
+                
+                // Auto-hide controls after playing starts (Netflix style)
+                setTimeout(function() {
+                    if (isPlaying && !isSeeking) {
+                        hideControls();
+                    }
+                }, 3000);
+            });
+            
+            videoElement.addEventListener('pause', function() {
+                playIcon.className = 'ri-play-fill';
+                isPlaying = false;
+                
+                showControls(); // Always show controls when paused
+            });
+            
+            videoElement.addEventListener('loadedmetadata', function() {
+                durationElement.textContent = formatTime(videoElement.duration || 0);
+            });
+            
+            videoElement.addEventListener('ended', function() {
+              playIcon.className = 'ri-play-fill';
+              bigPlayButton.classList.add('visible');
+              isPlaying = false;
+              
+              // Send explicit message to parent that video has ended
+              window.parent.postMessage({
+                type: 'videoEnded',
+                source: 'OdeluPlayer'
+              }, '*');
+              
+              showControls(); // Always show controls when ended
+            });
+            
+            videoElement.addEventListener('volumechange', updateVolumeIcon);
+            
+            videoElement.addEventListener('error', function(e) {
+                console.error('Video error:', e);
+                
+                // Only show error if we've exhausted retries
+                if (retryCount >= MAX_RETRIES) {
+                    errorElement.textContent = "Error playing video";
+                    errorElement.style.display = "block";
+                    loadingElement.style.display = "none";
+                } else {
+                    // Try to recover
+                    retryCount++;
+                    console.log(`Video error - attempting recovery (${retryCount}/${MAX_RETRIES})`);
+                    
+                    if (hlsInstance) {
+                        hlsInstance.recoverMediaError();
+                    } else {
+                        // For native players, try reloading
+                        const currentTime = videoElement.currentTime;
+                        videoElement.load();
+                        videoElement.currentTime = currentTime;
+                    }
+                }
+            });
+            
+            // Fullscreen change events
+            document.addEventListener('fullscreenchange', handleFullscreenChange);
+            document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+            document.addEventListener('mozfullscreenchange', handleFullscreenChange);
+            document.addEventListener('MSFullscreenChange', handleFullscreenChange);
+            
+            function handleFullscreenChange() {
+                isFullscreen = !!(document.fullscreenElement || 
+                                document.webkitFullscreenElement || 
+                                document.mozFullScreenElement || 
+                                document.msFullscreenElement);
+                
+                if (!isFullscreen) {
+                    playerContainer.classList.remove('fullscreen-active');
+                    document.getElementById('fullscreen-button').querySelector('i').className = 'ri-fullscreen-fill';
+                } else {
+                    document.getElementById('fullscreen-button').querySelector('i').className = 'ri-fullscreen-exit-fill';
+                }
+            }
+            
+            // Mouse movement to show controls (Netflix style)
+            playerContainer.addEventListener('mousemove', function() {
+                // Only show controls if video is playing
+                if (isPlaying) {
+                    showControls();
+                }
+            });
+            
+            // Click on video to toggle play/pause (Netflix style)
+            playerContainer.addEventListener('click', function(e) {
+                // Only toggle if not clicking on controls
+                if (e.target === videoElement || e.target === playerContainer) {
+                    togglePlayPause();
+                }
+            });
+            
+            // Keyboard shortcuts (Netflix style)
+            document.addEventListener('keydown', function(event) {
+                switch(event.key) {
+                    case ' ':
+                    case 'k':
+                        togglePlayPause();
+                        break;
+                    case 'f':
+                        toggleFullscreen();
+                        break;
+                    case 'm':
+                        toggleMute();
+                        break;
+                    case 'ArrowRight':
+                        videoElement.currentTime = Math.min(videoElement.duration, videoElement.currentTime + 10);
+                        showControls();
+                        showNotification("Forward 10 seconds");
+                        break;
+                    case 'ArrowLeft':
+                        videoElement.currentTime = Math.max(0, videoElement.currentTime - 10);
+                        showControls();
+                        showNotification("Rewound 10 seconds");
+                        break;
+                    case 'ArrowUp':
+                        videoElement.volume = Math.min(1, videoElement.volume + 0.1);
+                        showControls();
+                        showNotification(`Volume: ${Math.round(videoElement.volume * 100)}%`);
+                        break;
+                    case 'ArrowDown':
+                        videoElement.volume = Math.max(0, videoElement.volume - 0.1);
+                        showControls();
+                        showNotification(`Volume: ${Math.round(videoElement.volume * 100)}%`);
+                        break;
+                    case 's':
+                        changePlaybackSpeed();
+                        break;
+                    case 'q':
+                        // Toggle quality menu
+                        if (qualityMenu.style.display === 'none') {
+                            qualityMenu.style.display = 'block';
+                            updateQualityMenu();
+                        } else {
+                            qualityMenu.style.display = 'none';
+                        }
+                        break;
+                }
+            });
+            
+            // Handle messages from parent window (for embedding)
+            window.addEventListener('message', function(event) {
+                try {
+                    const message = event.data;
+                    
+                    // Only process messages with commands
+                    if (message && message.command) {
+                        console.log('Received command:', message.command);
+                        
+                        switch(message.command) {
+                            case 'play':
+                                videoElement.play();
+                                break;
+                                
+                            case 'pause':
+                                videoElement.pause();
+                                break;
+                                
+                            case 'togglePlay':
+                                togglePlayPause();
+                                break;
+                                
+                            case 'seek':
+                                if (typeof message.time === 'number') {
+                                    videoElement.currentTime = message.time;
+                                }
+                                break;
+                                
+                            case 'setVolume':
+                                if (typeof message.volume === 'number') {
+                                    videoElement.volume = Math.max(0, Math.min(1, message.volume));
+                                }
+                                break;
+                                
+                            case 'mute':
+                                videoElement.muted = true;
+                                break;
+                                
+                            case 'unmute':
+                                videoElement.muted = false;
+                                break;
+                                
+                            case 'setFullscreen':
+                                if (message.value && !isFullscreen) {
+                                    toggleFullscreen();
+                                } else if (!message.value && isFullscreen) {
+                                    toggleFullscreen();
+                                }
+                                break;
+                                
+                            case 'setAutoNext':
+                                // This would be handled by the parent, but we acknowledge it
+                                console.log('Auto next setting updated:', message.value);
+                                break;
+                                
+                            case 'setLoop':
+                                videoElement.loop = !!message.value;
+                                console.log('Loop setting updated:', videoElement.loop);
+                                break;
+                                
+                            case 'getState':
+                                // Send current player state back to parent
+                                const state = {
+                                    currentTime: videoElement.currentTime,
+                                    duration: videoElement.duration,
+                                    paused: videoElement.paused,
+                                    volume: videoElement.volume,
+                                    muted: videoElement.muted,
+                                    fullscreen: isFullscreen,
+                                    playbackRate: videoElement.playbackRate
+                                };
+                                
+                                window.parent.postMessage({
+                                    type: 'playerState',
+                                    state: state,
+                                    source: 'OdeluPlayer'
+                                }, '*');
+                                break;
+                        }
+                    }
+                } catch (err) {
+                    console.error('Error processing message:', err);
+                }
+            });
+            
+            // Send ready message to parent window
+            window.parent.postMessage({
+                type: 'playerReady',
+                source: 'OdeluPlayer'
+            }, '*');
+            
+            // Initialize the player
+            initPlayer();
+        });
+    </script>
+</body>
+</html>
